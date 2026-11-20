@@ -98,6 +98,32 @@ int16_t NeuralEvaluate(const Position& position, const AccumulatorRepresentation
 		sum = _mm256_add_epi32(sum, p);
 	}
 	output = HorizontalSum(sum);
+#elif defined(__ARM_NEON)
+	// NEON version of the AVX2 path above (128-bit registers, so 8 lanes instead of 16)
+	// Same arithmetic: clamp, then v * (v * w) with the product wrapping in int16 and the sum in int32
+	const int16x8_t min = vdupq_n_s16(0);
+	const int16x8_t max = vdupq_n_s16(static_cast<int16_t>(QA));
+
+	// Dot product of one perspective's hidden layer with its output weights
+	// Eight independent accumulators (2 per 8-lane vector pair) hide the multiply-accumulate latency
+	auto DotProduct = [&] (const int16_t* hidden, const int16_t* weights) {
+		int32x4_t sum[8];
+		for (int k = 0; k < 8; k++) sum[k] = vdupq_n_s32(0);
+		for (int i = 0; i < HiddenSize; i += 32) {
+			for (int k = 0; k < 4; k++) {
+				const int16x8_t v = vminq_s16(vmaxq_s16(vld1q_s16(hidden + i + 8 * k), min), max);
+				const int16x8_t vw = vmulq_s16(v, vld1q_s16(weights + i + 8 * k));
+				sum[2 * k] = vmlal_s16(sum[2 * k], vget_low_s16(v), vget_low_s16(vw));
+				sum[2 * k + 1] = vmlal_high_s16(sum[2 * k + 1], v, vw);
+			}
+		}
+		int32x4_t total = sum[0];
+		for (int k = 1; k < 8; k++) total = vaddq_s32(total, sum[k]);
+		return vaddvq_s32(total);
+	};
+
+	output = DotProduct(hiddenFriendly.data(), &Network->OutputWeights[outputBucket][0])
+		+ DotProduct(hiddenOpponent.data(), &Network->OutputWeights[outputBucket][HiddenSize]);
 #else
 	// Slower fallback
 	// if you end up here... that's bad.
