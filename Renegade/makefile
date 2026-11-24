@@ -59,17 +59,29 @@ ifeq ($(build), x86-64-bmi2)
 endif
 
 # note: there is a page size transition, the second LDFLAGS line can be dropped for NDK r28 and above
-ifeq ($(build), android)
+ifneq (,$(filter $(build),android android-library))
 	NATIVE   =  --target=aarch64-linux-android28
 	LDFLAGS  += -static-libstdc++
 	LDFLAGS  += -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384
+endif
+
+ifeq ($(build), android-library)
+	TARGET   := obj/android/libRenegadeBridge.so
+	NATIVE   := --target=aarch64-linux-android25
+	SOURCES  := $(filter-out Engine.cpp Renegade.cpp, $(SOURCES))
+	SOURCES  += unity/RenegadeBridge.cpp
+	CXXFLAGS += -fPIC
+	LDFLAGS  += -shared
 endif
 
 # Running build commands ------------------------------------------------------
 # (Engine.cpp is always recompiled to include the correct date and time) 
 
 OBJECTS := $(patsubst %.cpp,%.o,$(SOURCES))
-DEPENDS := $(patsubst %.cpp,%.d,$(SOURCES))
+ifeq ($(build), android-library)
+	OBJECTS := $(patsubst %.cpp,obj/android/%.o,$(SOURCES))
+endif
+DEPENDS := $(OBJECTS:.o=.d)
 EXE     := $(TARGET)
 
 all: $(TARGET)
@@ -87,7 +99,12 @@ $(TARGET): $(OBJECTS)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(NATIVE) -MMD -MP -c $< -o $@
 
+obj/android/%.o: %.cpp
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(NATIVE) -MMD -MP -c $< -o $@
+
 -include $(DEPENDS)
 
 Engine.o: FORCE
+obj/android/Neural.o: renegade-net-36.bin
 FORCE:

@@ -67,6 +67,23 @@ The recommended compiler is Clang 22, though older versions should work as long 
 > [!NOTE]
 > By default this will download the latest development version, rather than the most recent release. It generally should be stable, but there are no guarantees, please report any bugs that you encounter. 
 
+### Android shared library
+
+The Android NDK Clang toolchain can build an ARM64 shared library:
+
+```bash
+cd Renegade
+make build=android-library CXX=/path/to/android-ndk/toolchains/llvm/prebuilt/<host>/bin/clang++
+```
+
+The output is `obj/android/libRenegadeBridge.so` for Android API 25 and newer. The Unity bridge is in `unity/RenegadeBridge.h`.
+
+The bridge retains one engine position and exposes the existing Unity C# interface: UCI moves, FEN, evaluation and blocking search. Run search off the Unity main thread. `renegade_stop_search` may be called from another thread; other bridge calls wait for a running search. Chess960 FEN castling rights must use rook-file letters (Shredder-FEN), not `KQkq`. The bridge's game-state query uses the engine's search-oriented draw rules; the Unity game remains responsible for game rules and draw claims.
+
+`renegade_search_with_nodes` also accepts 64-bit hard (`nodes`) and soft (`softnodes`) node limits. Zero disables a limit; at least one search limit is required. The hard limit is checked during search, while the soft limit is checked after each completed depth. The first depth completes even when it exceeds a node limit; the limits can be combined with depth and movetime.
+
+The bridge has no calibrated Elo or playing-strength levels. Device testing and Unity Android packaging are still required.
+
 ## Acknowledgments
 Getting this far would not have been possible without the members of the [Stockfish](https://github.com/official-stockfish/Stockfish) and [Engine Programming Discord](https://github.com/EngineProgramming/engine-list), and the decades of prior research done into chess programming.  
 

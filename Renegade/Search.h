@@ -74,7 +74,7 @@ public:
 	void StartSearch(Position& position, const SearchParams params);
 	void StopSearch();
 	void Loop(ThreadData& t);
-	Results SearchSinglethreaded(const Position& pos, const SearchParams& params);
+	Results SearchSinglethreaded(const Position& pos, const SearchParams& params, const std::atomic<bool>* stopRequested = nullptr);
 	void WaitUntilReady();
 
 #ifdef RENEGADE_DATAGEN
@@ -106,5 +106,6 @@ private:
 	SearchConstraints Constraints;
 	std::chrono::high_resolution_clock::time_point StartSearchTime;
 	MultiArray<int, 32, 32> LateMoveReductionTable;
+	const std::atomic<bool>* ExternalStop = nullptr;
 
 };

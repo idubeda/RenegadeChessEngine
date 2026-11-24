@@ -101,6 +101,14 @@ void Transpositions::AllocateTable(const uint64_t clusterCount) {
 	#if defined(_MSC_VER) || defined(_WIN32)
 		// Windows: just allocate memory, don't bother with memory tricks
 		Table = static_cast<TranspositionCluster*>(_aligned_malloc(requestedBytes, 64));
+	#elif defined(__ANDROID__)
+		void* memory = nullptr;
+		if (posix_memalign(&memory, 64, requestedBytes) == 0) {
+			Table = static_cast<TranspositionCluster*>(memory);
+		}
+		else {
+			Table = nullptr;
+		}
 	#elif defined(__linux__) && defined(MADV_HUGEPAGE)
 		// Linux: request transparent huge pages for a possible speed up (if requested size is compatible with that)
 		if (requestedBytes % (2 * 1024 * 1024) == 0) {

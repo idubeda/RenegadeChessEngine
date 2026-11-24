@@ -53,9 +53,10 @@ void Search::SetThreadCount(const int threadCount) {
 	StartThreads(threadCount);
 }
 
-Results Search::SearchSinglethreaded(const Position& pos, const SearchParams& params) {
+Results Search::SearchSinglethreaded(const Position& pos, const SearchParams& params, const std::atomic<bool>* stopRequested) {
 	StartSearchTime = Clock::now();
 	Aborting.store(false);
+	ExternalStop = stopRequested;
 	TranspositionTable.IncreaseAge();
 	ThreadData& t = Threads.front();
 	t.singlethreaded = true;
@@ -66,6 +67,7 @@ Results Search::SearchSinglethreaded(const Position& pos, const SearchParams& pa
 
 	SearchMoves(t);
 	t.singlethreaded = false;
+	ExternalStop = nullptr;
 	return t.result;
 }
 
@@ -191,6 +193,7 @@ SearchConstraints Search::CalculateConstraints(const SearchParams params, const 
 }
 
 bool Search::ShouldAbort(const ThreadData& t) {
+	if (ExternalStop && ExternalStop->load(std::memory_order_relaxed)) Aborting.store(true, std::memory_order_relaxed);
 	if (Aborting.load(std::memory_order_relaxed) && (t.RootDepth > 1 || !t.IsMainThread())) return true;
 	if (!t.IsMainThread()) return false; // TODO: ensure limits when multithreaded
 
@@ -304,7 +307,7 @@ void Search::SearchMoves(ThreadData& t) {
 		if (t.Nodes >= Constraints.SoftNodes && Constraints.SoftNodes != -1) finished = true;
 
 		const bool aborting = Aborting.load(std::memory_order_relaxed);
-		if (aborting && !t.singlethreaded && t.RootDepth > 1) {
+		if (aborting && (!t.singlethreaded || ExternalStop) && t.RootDepth > 1) {
 			t.result.nodes = t.Nodes;
 			t.result.time = elapsedMs;
 			t.result.nps = static_cast<uint64_t>(t.Nodes * 1e9 / (currentTime - StartSearchTime).count());
@@ -313,7 +316,7 @@ void Search::SearchMoves(ThreadData& t) {
 		}
 
 		// Save info
-		if (!t.singlethreaded || !aborting) {
+		if (!t.singlethreaded || !aborting || (ExternalStop && t.RootDepth == 1)) {
 			t.result.score = score;
 			t.result.depth = t.RootDepth;
 			t.result.pv = t.GeneratePVLine();
